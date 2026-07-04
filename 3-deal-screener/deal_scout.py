@@ -70,6 +70,33 @@ RED_C = RGBColor(0xBB, 0x22, 0x22)
 
 SECTORS = ["Consumer", "Fintech", "SaaS"]
 
+# Sector-specific search query pairs (2 per sector).  Each string is inserted
+# into the Serper query so results are tightly scoped to the chosen vertical.
+_SECTOR_QUERIES: dict[str, list[str]] = {
+    "consumer": [
+        '"D2C" OR "consumer brand" OR "food tech" OR "quick commerce" OR "retail tech"',
+        '"consumer internet" OR "FMCG startup" OR "beauty startup" OR "fashion startup"',
+    ],
+    "fintech": [
+        '"payments" OR "digital lending" OR "insurtech" OR "neobank" OR "wealthtech"',
+        '"BNPL" OR "embedded finance" OR "credit startup" OR "regtech" OR "paytech"',
+    ],
+    "saas": [
+        '"B2B SaaS" OR "enterprise software" OR "SaaS startup" OR "vertical SaaS"',
+        '"cloud platform" OR "API-first" OR "developer tools" OR "software startup"',
+    ],
+}
+
+# Keywords that earn a bonus score when they appear in a result for a given sector.
+_SECTOR_KEYWORDS: dict[str, list[str]] = {
+    "consumer": ["d2c", "consumer brand", "fmcg", "food tech", "quick commerce",
+                 "retail tech", "beauty", "fashion", "consumer internet"],
+    "fintech":  ["fintech", "payments", "digital lending", "insurtech", "neobank",
+                 "wealthtech", "bnpl", "embedded finance", "regtech"],
+    "saas":     ["saas", "b2b saas", "enterprise software", "cloud platform",
+                 "software", "api", "developer tools", "vertical saas"],
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. Sector rotation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -185,7 +212,7 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
 # 3. Startup discovery
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _score(title: str, snippet: str, url: str = "") -> int:
+def _score(title: str, snippet: str, url: str = "", sector: str = "") -> int:
     """Score how likely this result is an early-stage Indian startup (higher = better)."""
     text = (title + " " + snippet).lower()
     score = 0
@@ -194,6 +221,10 @@ def _score(title: str, snippet: str, url: str = "") -> int:
                 "inc42", "yourstory", "entrackr", "techcrunch"]:
         if kw in text:
             score += 2
+    # Bonus for keywords that directly match the chosen sector
+    for kw in _SECTOR_KEYWORDS.get(sector.lower(), []):
+        if kw in text:
+            score += 3
     # Extra bonus for Indian geography / currency signals
     for kw in ["bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "pune",
                 "chennai", "noida", "gurugram", "inr", "rupee", "crore"]:
@@ -347,42 +378,51 @@ def _extract_name(title: str) -> str:
     return name
 
 
-def discover_startup(sector: str) -> dict:
+def discover_startup(sector: str, exclude: set | None = None) -> dict:
     """
-    Run 2 Serper queries scoped to startup news sites, score results, return
-    the best candidate as {name, url, snippet} or raise SystemExit on failure.
+    Run 2 sector-specific Serper queries scoped to Indian startup news sites,
+    score all results, and return the best candidate that hasn't been tried yet.
+    Raises SystemExit if no valid candidate is found.
+
+    Args:
+        sector:  One of "Consumer", "Fintech", "SaaS".
+        exclude: Set of company names already tried this session — they are skipped.
     """
-    # Restrict to Indian startup news outlets so results are always about
-    # a specific company, not market reports or directories.
-    # Indian startup news outlets only — no global/US sites
+    exclude = {e.lower() for e in (exclude or set())}
+
     news_sites = (
         "site:inc42.com OR site:yourstory.com OR site:entrackr.com "
         "OR site:economictimes.indiatimes.com OR site:vccircle.com "
         "OR site:medianama.com OR site:themorningcontext.com"
     )
+
+    sector_key = sector.lower()
+    # Fall back to generic terms if sector is not in the map
+    q_terms = _SECTOR_QUERIES.get(sector_key, [f'"{sector.lower()} startup"', ""])
     queries = [
-        f'{news_sites} "{sector.lower()} startup" India raises crore 2025 -monthly -report -roundup',
-        f'{news_sites} India {sector.lower()} startup "Series A" OR "seed round" closes 2025 -monthly -report',
+        f'{news_sites} India {q_terms[0]} startup raises crore 2025 -report -roundup -list',
+        f'{news_sites} India {sector.lower()} {q_terms[1]} "seed" OR "Series A" OR "Series B" 2025 -report -list',
     ]
 
     all_results = []
     for q in queries:
-        results = serper_search(q, num=5)
+        results = serper_search(q, num=8)
         all_results.extend(results)
         time.sleep(0.6)
 
     if not all_results:
-        print("[ERROR] No results from Custom Search. Check your API key and CX.")
+        print("[ERROR] No results from Serper. Check your API key.")
         sys.exit(1)
 
-    # Deduplicate by domain, keep highest-scoring per domain
-    seen, scored = set(), []
+    # Deduplicate by URL path (not just domain — same site can cover many startups)
+    seen_urls, scored = set(), []
     for r in all_results:
-        domain = re.sub(r"https?://(?:www\.)?", "", r["link"]).split("/")[0]
-        if domain in seen or domain in _JUNK_DOMAINS:
+        url = r["link"]
+        domain = re.sub(r"https?://(?:www\.)?", "", url).split("/")[0]
+        if url in seen_urls or domain in _JUNK_DOMAINS:
             continue
-        seen.add(domain)
-        s = _score(r["title"], r["snippet"], r["link"])
+        seen_urls.add(url)
+        s = _score(r["title"], r["snippet"], url, sector=sector)
         if s > 0:
             scored.append((s, r))
 
@@ -395,13 +435,16 @@ def discover_startup(sector: str) -> dict:
         name = _extract_name(best["title"])
         if not name:
             continue
+        if name.lower() in exclude:
+            print(f"[Discovery] Skipping '{name}' — already tried this session")
+            continue
         if not _is_india_based(best["title"], best["snippet"]):
             print(f"[Discovery] Skipping '{name}' — HQ appears to be outside India")
             continue
         print(f"[Discovery] Candidate: {name}  ({best['link']})")
         return {"name": name, "url": best["link"], "snippet": best["snippet"]}
 
-    print("[ERROR] No India-based startup candidate found in search results.")
+    print("[ERROR] No new India-based startup candidate found (all results already tried).")
     sys.exit(1)
 
 

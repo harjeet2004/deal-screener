@@ -422,56 +422,87 @@ _INDIA_CITIES = {
     "ahmedabad", "jaipur", "indore", "surat", "kochi", "coimbatore",
 }
 
+MAX_PIPELINE_ATTEMPTS = 6
+
+
 def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
     orig = sys.stdout
     sys.stdout = _TeeIO(orig, log_q)
     try:
         today = datetime.date.today().strftime("%Y-%m-%d")
+        tried: set[str] = set()   # company names already attempted this run
+        structured = None
+        pptx_path  = None
 
-        # Step 1 — discover
-        log_q.put(("step", 1))
-        candidate = discover_startup(sector)
-        company   = candidate["name"]
-        log_q.put(("candidate", company))
+        for attempt in range(1, MAX_PIPELINE_ATTEMPTS + 1):
+            if attempt > 1:
+                log_q.put(("log",
+                    f"[Attempt {attempt}/{MAX_PIPELINE_ATTEMPTS}] "
+                    f"Searching for a different {sector} candidate…"))
 
-        # Step 2 — research
-        log_q.put(("step", 2))
-        research = deep_research(company, sector, candidate["url"])
+            # ── Step 1: Discover ──────────────────────────────────────────
+            log_q.put(("step", 1))
+            try:
+                candidate = discover_startup(sector, exclude=tried)
+            except SystemExit:
+                if attempt < MAX_PIPELINE_ATTEMPTS:
+                    log_q.put(("log",
+                        f"[Attempt {attempt}] No new candidate found in results. Retrying…"))
+                    continue
+                log_q.put(("error",
+                    f"Could not find a suitable {sector} startup after "
+                    f"{MAX_PIPELINE_ATTEMPTS} attempts. Please try again later."))
+                return
 
-        # Step 3 — synthesise
-        log_q.put(("step", 3))
-        structured = synthesise(company, sector, research)
+            company = candidate["name"]
+            tried.add(company)
+            log_q.put(("candidate", company))
 
-        # HQ guard
-        hq = structured.get("hq", "")
-        if hq and not any(c in hq.lower() for c in _INDIA_CITIES) \
-                and "not publicly" not in hq.lower():
+            # ── Step 2: Research ─────────────────────────────────────────
+            log_q.put(("step", 2))
+            research = deep_research(company, sector, candidate["url"])
+
+            # ── Step 3: AI Synthesis ─────────────────────────────────────
+            log_q.put(("step", 3))
+            structured = synthesise(company, sector, research)
+
+            # Guard 1: India HQ check
+            hq = structured.get("hq", "")
+            if hq and not any(c in hq.lower() for c in _INDIA_CITIES) \
+                    and "not publicly" not in hq.lower():
+                log_q.put(("log",
+                    f"[Attempt {attempt}] '{company}' HQ is '{hq}' — not India. "
+                    "Skipping and searching again…"))
+                continue
+
+            # Guard 2: Thesis-fit check — skip if 2+ dimensions are out of scope
+            fit_stage  = structured.get("thesis_fit_stage",  "").lower()
+            fit_sector = structured.get("thesis_fit_sector", "").lower()
+            fit_ticket = structured.get("thesis_fit_ticket", "").lower()
+            out_of_scope = [f for f in [fit_stage, fit_sector, fit_ticket]
+                            if "out of scope" in f]
+            if len(out_of_scope) >= 2:
+                log_q.put(("log",
+                    f"[Attempt {attempt}] '{company}' is outside MGA's scope "
+                    "(stage/sector/ticket). Searching for a better match…"))
+                continue
+
+            # Good candidate — exit the retry loop
+            break
+
+        else:
+            # Loop finished without a break → all attempts exhausted
             log_q.put(("error",
-                f"HQ detected as '{hq}' — not an Indian city. "
-                "Re-run to pick a different candidate."))
+                f"Could not find a thesis-aligned {sector} startup after "
+                f"{MAX_PIPELINE_ATTEMPTS} attempts. Please try again later."))
             return
 
-        # Thesis-fit guard — skip companies clearly outside MGA's scope
-        fit_stage  = structured.get("thesis_fit_stage",  "").lower()
-        fit_sector = structured.get("thesis_fit_sector", "").lower()
-        fit_ticket = structured.get("thesis_fit_ticket", "").lower()
-        out_of_scope = [f for f in [fit_stage, fit_sector, fit_ticket]
-                        if "out of scope" in f]
-        if len(out_of_scope) >= 2:
-            log_q.put(("error",
-                f"'{company}' appears outside MGA's investment scope "
-                "(wrong stage, sector, or ticket size). "
-                "Re-run to pick a different candidate."))
-            return
-
-        # Logo
+        # ── Step 4: Build deck ────────────────────────────────────────────
         logo_bytes = _fetch_logo(structured.get("website", ""))
-
-        # Step 4 — build deck
         log_q.put(("step", 4))
         pptx_path = build_deck(structured, today, logo_bytes=logo_bytes)
 
-        # Step 5 — email
+        # ── Step 5: Email ─────────────────────────────────────────────────
         log_q.put(("step", 5))
         if send_email:
             summary = structured.get(
