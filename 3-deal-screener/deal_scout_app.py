@@ -448,9 +448,10 @@ _init("email_error",    None)
 _init("error",          None)
 _init("step",           0)
 _init("sector_used",    "")
-_init("candidate",      "")
-_init("attempt_cur",    1)
-_init("attempt_max",    MAX_PIPELINE_ATTEMPTS)
+_init("candidate",        "")
+_init("attempt_cur",      1)
+_init("attempt_max",      MAX_PIPELINE_ATTEMPTS)
+_init("recipient_email",  "")
 
 
 # ── Stdout tee for live log capture ───────────────────────────────────────────
@@ -480,7 +481,7 @@ _INDIA_CITIES = {
     "ahmedabad", "jaipur", "indore", "surat", "kochi", "coimbatore",
 }
 
-def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
+def _run_pipeline(sector: str, send_email: bool, recipient_email: str, log_q: queue.Queue):
     orig = sys.stdout
     sys.stdout = _TeeIO(orig, log_q)
     try:
@@ -570,7 +571,8 @@ def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
             try:
                 email_deck(pptx_path,
                            structured.get("company_name", company),
-                           summary, today)
+                           summary, today,
+                           recipient=recipient_email)
                 log_q.put(("email_ok", None))
             except BaseException as em:
                 # Catch SystemExit too (e.g. missing credentials.json)
@@ -655,6 +657,20 @@ with st.sidebar:
         disabled=st.session_state.running,
     )
 
+    if send_email_opt:
+        default_email = (
+            st.session_state.recipient_email
+            or (getattr(_ds, "RECIPIENT_EMAIL", "") if _ds else "")
+        )
+        custom_email = st.text_input(
+            "Recipient email",
+            value=default_email,
+            placeholder="anyone@example.com",
+            disabled=st.session_state.running,
+        )
+    else:
+        custom_email = ""
+
     st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
 
     btn_disabled = (
@@ -688,7 +704,7 @@ with st.sidebar:
       📚 4 searches + page fetch<br>
       🤖 Groq Llama-3.3 → JSON<br>
       📊 python-pptx → 9-slide deck<br>
-      📧 Gmail API → email attach
+      📧 Gmail SMTP → email attach
     </div>
     """, unsafe_allow_html=True)
 
@@ -704,15 +720,16 @@ if run_btn and not st.session_state.running:
     st.session_state.error       = None
     st.session_state.step        = 1
     st.session_state.sector_used = sector_final
-    st.session_state.candidate   = ""
-    st.session_state.attempt_cur = 1
-    st.session_state.attempt_max = MAX_PIPELINE_ATTEMPTS
+    st.session_state.candidate      = ""
+    st.session_state.attempt_cur    = 1
+    st.session_state.attempt_max    = MAX_PIPELINE_ATTEMPTS
+    st.session_state.recipient_email = custom_email
 
     lq = queue.Queue()
     st.session_state["_log_q"] = lq
     threading.Thread(
         target=_run_pipeline,
-        args=(sector_final, send_email_opt, lq),
+        args=(sector_final, send_email_opt, custom_email, lq),
         daemon=True,
     ).start()
 

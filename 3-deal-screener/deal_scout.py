@@ -1561,27 +1561,13 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
                     cell.fill.solid(); cell.fill.fore_color.rgb = NAVY
                 elif ri % 2 == 0:
                     cell.fill.solid(); cell.fill.fore_color.rgb = LTBG
-        # Per-round source footnotes directly below the table
-        fn_y = 1.15 + n * 0.62 + 0.1
-        src_lines = []
-        for r in rounds:
-            su = r.get("source_url", "")
-            if su and "not publicly" not in su.lower():
-                outlet = re.sub(r"https?://(?:www\.)?([^/]+).*", r"\1", su)
-                src_lines.append(f"  • {r.get('round', '?')}: {outlet} — {su}")
-        if src_lines:
-            note_text = "Funding sources:\n" + "\n".join(src_lines)
-            note_h = 0.28 * (len(src_lines) + 1) + 0.1
-            _txb(s7, note_text, 0.35, fn_y, 6.5, note_h,
-                 size=10, italic=True, color=GRAY)
-            fn_y += note_h + 0.1
-
-        # Funding chart below footnotes
+        # Funding chart directly below the table (sources are in Slide 9)
+        chart_y = 1.15 + n * 0.62 + 0.15
         fund_png = _funding_chart(rounds)
         if fund_png:
-            if fn_y + 2.0 < 7.4:
+            if chart_y + 2.0 < 7.4:
                 s7.shapes.add_picture(io.BytesIO(fund_png),
-                                      Inches(0.35), Inches(fn_y), width=Inches(6.5))
+                                      Inches(0.35), Inches(chart_y), width=Inches(6.5))
     else:
         _txb(s7, "No funding data found in public sources.",
              0.35, 1.5, 6.5, 0.6, size=16, color=GRAY, italic=True)
@@ -1822,11 +1808,12 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
 # 7. Gmail send
 # ─────────────────────────────────────────────────────────────────────────────
 
-def email_deck(pptx_path: Path, company: str, summary: str, today_str: str):
+def email_deck(pptx_path: Path, company: str, summary: str, today_str: str,
+               recipient: str = ""):
     """Send the PPTX via Gmail SMTP using an App Password (no OAuth required)."""
-    recipient = RECIPIENT_EMAIL or GMAIL_USER
+    recipient = recipient or RECIPIENT_EMAIL or GMAIL_USER
     if not recipient:
-        print("[WARN] RECIPIENT_EMAIL not set — skipping email.")
+        print("[WARN] No recipient email set — skipping email.")
         return
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         raise RuntimeError(
