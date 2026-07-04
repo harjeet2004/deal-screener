@@ -1842,12 +1842,11 @@ def _gmail_service():
             creds.refresh(GoogleRequest())
         else:
             if not CREDS_PATH.exists():
-                print(
-                    f"\n[ERROR] {CREDS_PATH} not found.\n"
-                    "Follow Step 4 in the setup walkthrough to download credentials.json\n"
-                    "from the Google Cloud Console and place it in the 3-deal-screener/ folder."
+                raise RuntimeError(
+                    f"{CREDS_PATH.name} not found. "
+                    "Gmail OAuth requires credentials.json from the Google Cloud Console. "
+                    "On Streamlit Cloud, set the GMAIL_TOKEN_JSON secret instead."
                 )
-                sys.exit(1)
             flow  = InstalledAppFlow.from_client_secrets_file(str(CREDS_PATH), GMAIL_SCOPES)
             creds = flow.run_local_server(port=0)
         TOKEN_PATH.write_text(creds.to_json())

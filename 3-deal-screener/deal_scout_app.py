@@ -554,7 +554,11 @@ def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
         log_q.put(("step", 4))
         pptx_path = build_deck(structured, today, logo_bytes=logo_bytes)
 
-        # ── Step 5: Email ─────────────────────────────────────────────────
+        # Mark done right after deck is built — download is available from here on
+        # even if the email step below fails or is skipped.
+        log_q.put(("done", (structured, str(pptx_path))))
+
+        # ── Step 5: Email (non-fatal) ─────────────────────────────────────
         log_q.put(("step", 5))
         if send_email:
             summary = structured.get(
@@ -564,16 +568,17 @@ def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
                            structured.get("company_name", company),
                            summary, today)
                 log_q.put(("email_ok", None))
-            except Exception as em:
+            except BaseException as em:
+                # Catch SystemExit too (e.g. missing credentials.json)
                 log_q.put(("email_err", str(em)))
         else:
             log_q.put(("log", "[Email] Skipped (checkbox unchecked)."))
 
-        log_q.put(("done", (structured, str(pptx_path))))
+        log_q.put(("finish", None))
 
     except SystemExit:
         log_q.put(("error",
-            "No valid startup candidate found. Try a different sector or re-run."))
+            "No candidate found after retries. Try a different sector or re-run."))
     except Exception as exc:
         import traceback
         log_q.put(("error", f"{exc}\n{traceback.format_exc()}"))
@@ -598,11 +603,15 @@ def _drain():
             elif kind == "candidate":
                 st.session_state.candidate = payload
             elif kind == "done":
+                # Deck is ready — store result but keep running=True so email
+                # messages (email_ok / email_err) can still be drained.
                 structured, pptx = payload
                 st.session_state.result    = structured
                 st.session_state.pptx_path = pptx
-                st.session_state.running   = False
-                st.session_state.step      = 5
+            elif kind == "finish":
+                # Pipeline fully complete (after email step)
+                st.session_state.running = False
+                st.session_state.step    = 5
             elif kind == "email_ok":
                 st.session_state.email_sent = True
             elif kind == "email_err":
@@ -746,16 +755,27 @@ def _status_panel():
     _was = st.session_state.running
     _drain()
 
-    active = st.session_state.running
-    done   = bool(st.session_state.result)
-    error  = bool(st.session_state.error)
-    cur    = st.session_state.step
+    active      = st.session_state.running
+    has_result  = bool(st.session_state.result)
+    done        = has_result and not active        # finished + deck ready
+    emailing    = has_result and active            # deck ready, email in flight
+    error       = bool(st.session_state.error)
+    cur         = st.session_state.step
 
     if active or done or error or cur > 0:
         _sdots = ('<span class="sdot">.</span>'
                   '<span class="sdot">.</span>'
                   '<span class="sdot">.</span>')
-        if active:
+        if emailing:
+            company_name = st.session_state.result.get("company_name", "")
+            st.markdown(
+                f'<div class="status-running">'
+                f'<span class="pulse-dot"></span>&nbsp; '
+                f'Sending email — <strong>{company_name}</strong>{_sdots}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif active:
             cname  = st.session_state.candidate
             action = (f"Analysing <strong>{cname}</strong>"
                       if cname else f"Scanning {st.session_state.sector_used}")
@@ -850,7 +870,7 @@ st.markdown(f"""
 
 # Convenience aliases used by the result/empty sections below
 active = st.session_state.running
-done   = bool(st.session_state.result)
+done   = bool(st.session_state.result)   # deck ready (running may still be True for email)
 error  = bool(st.session_state.error)
 
 # ── Error ──────────────────────────────────────────────────────────────────────
