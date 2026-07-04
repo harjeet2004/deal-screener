@@ -12,7 +12,6 @@ import queue
 import re
 import sys
 import threading
-import time
 from pathlib import Path
 
 import streamlit as st
@@ -698,13 +697,81 @@ if run_btn and not st.session_state.running:
         daemon=True,
     ).start()
 
-# Drain queue on every render while running.
-# If the pipeline just finished (running flipped to False), rerun immediately so
-# the sidebar button re-renders with "Run Deal Scout" instead of staying stuck.
-_was_running = st.session_state.running
-_drain()
-if _was_running and not st.session_state.running:
-    st.rerun()
+# ── Live status panel ──────────────────────────────────────────────────────────
+# Uses st.fragment so only this section auto-refreshes every 1.5 s while the
+# pipeline runs — the result cards below never blink or flicker.
+_poll_interval: float | None = 1.5 if st.session_state.running else None
+
+@st.fragment(run_every=_poll_interval)
+def _status_panel():
+    _was = st.session_state.running
+    _drain()
+
+    active = st.session_state.running
+    done   = bool(st.session_state.result)
+    error  = bool(st.session_state.error)
+    cur    = st.session_state.step
+
+    if active or done or error or cur > 0:
+        _sdots = ('<span class="sdot">.</span>'
+                  '<span class="sdot">.</span>'
+                  '<span class="sdot">.</span>')
+        if active:
+            cname  = st.session_state.candidate
+            action = (f"Analysing <strong>{cname}</strong>"
+                      if cname else f"Scanning {st.session_state.sector_used}")
+            st.markdown(
+                f'<div class="status-running">'
+                f'<span class="pulse-dot"></span>&nbsp; {action}{_sdots}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif done:
+            company_name = st.session_state.result.get("company_name", "")
+            st.markdown(
+                f'<div class="status-done">✅ &nbsp;Deal memo ready — '
+                f'<strong>{company_name}</strong></div>',
+                unsafe_allow_html=True,
+            )
+        elif error:
+            st.markdown(
+                f'<div class="status-running" style="border-color:{RED};'
+                f'color:{RED};background:{RED}22;">'
+                f'❌ &nbsp;Pipeline stopped — see details below</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown(_step_html(cur, active, done), unsafe_allow_html=True)
+
+    if st.session_state.log_lines:
+        def _log_class(line: str) -> str:
+            ll = line.lower()
+            if any(k in ll for k in ["[discovery]", "[disco", "candidate:"]):
+                return "log-ok"
+            if any(k in ll for k in ["[research]", "fetching", "searching"]):
+                return "log-info"
+            if any(k in ll for k in ["[groq]", "[gemini]", "synthesising"]):
+                return "log-ai"
+            if "[warn]" in ll:
+                return "log-warn"
+            if "[error]" in ll:
+                return "log-err"
+            return ""
+
+        log_html = "\n".join(
+            f'<div class="log-line {_log_class(l)}">{l}</div>'
+            for l in st.session_state.log_lines
+        )
+        with st.expander("📋 Live pipeline logs", expanded=active):
+            st.markdown(f'<div class="log-box">{log_html}</div>',
+                        unsafe_allow_html=True)
+
+    # Pipeline just finished → full app rerun so sidebar button updates
+    if _was and not st.session_state.running:
+        st.rerun()
+
+
+_status_panel()
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
@@ -765,59 +832,12 @@ def _step_html(current_step, is_running, is_done):
     return html
 
 
+
+
+# Convenience aliases used by the result/empty sections below
 active = st.session_state.running
 done   = bool(st.session_state.result)
 error  = bool(st.session_state.error)
-cur    = st.session_state.step
-
-if active or done or error or cur > 0:
-    # Status badge
-    _sdots = '<span class="sdot">.</span><span class="sdot">.</span><span class="sdot">.</span>'
-    if active:
-        cname  = st.session_state.candidate
-        action = f"Analysing <strong>{cname}</strong>" if cname else f"Scanning {st.session_state.sector_used}"
-        st.markdown(
-            f'<div class="status-running">'
-            f'<span class="pulse-dot"></span>&nbsp; {action}{_sdots}'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    elif done:
-        company_name = st.session_state.result.get("company_name", "")
-        st.markdown(f'<div class="status-done">✅ &nbsp;Deal memo ready — <strong>{company_name}</strong></div>', unsafe_allow_html=True)
-    elif error:
-        st.markdown(f'<div class="status-running" style="border-color:{RED};color:{RED};background:{RED}22;">❌ &nbsp;Pipeline stopped — see details below</div>', unsafe_allow_html=True)
-
-    st.markdown(_step_html(cur, active, done), unsafe_allow_html=True)
-
-
-# ── Log output ─────────────────────────────────────────────────────────────────
-if st.session_state.log_lines:
-    def _log_class(line: str) -> str:
-        ll = line.lower()
-        if any(k in ll for k in ["[discovery]", "[disco", "candidate:"]):
-            return "log-ok"
-        if any(k in ll for k in ["[research]", "fetching", "searching"]):
-            return "log-info"
-        if any(k in ll for k in ["[groq]", "[gemini]", "synthesising"]):
-            return "log-ai"
-        if "[warn]" in ll:
-            return "log-warn"
-        if "[error]" in ll:
-            return "log-err"
-        return ""
-
-    log_html = "\n".join(
-        f'<div class="log-line {_log_class(l)}">{l}</div>'
-        for l in st.session_state.log_lines
-    )
-
-    with st.expander("📋 Live pipeline logs", expanded=active):
-        st.markdown(
-            f'<div class="log-box">{log_html}</div>',
-            unsafe_allow_html=True,
-        )
-
 
 # ── Error ──────────────────────────────────────────────────────────────────────
 if st.session_state.error:
@@ -1115,7 +1135,3 @@ elif not active and not error:
     """, unsafe_allow_html=True)
 
 
-# ── Auto-refresh while running ─────────────────────────────────────────────────
-if st.session_state.running:
-    time.sleep(1.5)
-    st.rerun()

@@ -370,11 +370,32 @@ def _extract_name(title: str) -> str:
     name = title.strip()
     if not name:
         return None
+
+    words = name.split()
+
+    # Company names are 1–4 words; longer strings are headlines or phrases
+    if len(words) > 4:
+        return None
+
+    # Reject if any word is an article-action word — means this is a headline
+    # phrase like "Fintech investors back scalable", not a company name
+    _ARTICLE_ACTIONS = {
+        "back", "backs", "backed", "backing",
+        "fund", "funds", "funded",
+        "invest", "invests", "invested",
+        "support", "supports", "supported",
+        "investors", "angel", "venture",
+        "lead", "leads", "led", "leading",
+        "scalable", "sustainable", "profitable",
+    }
+    if any(w.lower() in _ARTICLE_ACTIONS for w in words):
+        return None
+
     # Reject if the extracted "name" is just generic sector/geography words
     # e.g. "India Startup", "Indian Fintech", "India SaaS"
-    words = name.lower().split()
-    if all(w in _GENERIC_WORDS for w in words):
+    if all(w.lower() in _GENERIC_WORDS for w in words):
         return None
+
     return name
 
 
