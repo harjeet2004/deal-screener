@@ -697,6 +697,39 @@ if run_btn and not st.session_state.running:
         daemon=True,
     ).start()
 
+_FIN_LOADER = (
+    '<div class="fin-loader">'
+    '<b></b><b></b><b></b><b></b><b></b>'
+    '</div>'
+)
+
+
+def _step_html(current_step, is_running, is_done):
+    html = '<div class="step-row">'
+    for i, (label, icon) in enumerate(zip(STEP_LABELS, STEP_ICONS)):
+        n = i + 1
+        if is_done or n < current_step:
+            cls = "done"
+            disp_icon = '<div class="step-icon">✅</div>'
+        elif n == current_step and is_running:
+            cls = "active"
+            disp_icon = _FIN_LOADER
+        elif n == current_step and not is_running:
+            cls = "done"
+            disp_icon = '<div class="step-icon">✅</div>'
+        else:
+            cls = "pending"
+            disp_icon = f'<div class="step-icon">{icon}</div>'
+        html += f"""
+        <div class="step-item {cls}">
+          <div class="step-num">Step {n}</div>
+          {disp_icon}
+          <div class="step-lbl">{label}</div>
+        </div>"""
+    html += "</div>"
+    return html
+
+
 # ── Live status panel ──────────────────────────────────────────────────────────
 # Uses st.fragment so only this section auto-refreshes every 1.5 s while the
 # pipeline runs — the result cards below never blink or flicker.
@@ -798,38 +831,6 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-_FIN_LOADER = (
-    '<div class="fin-loader">'
-    '<b></b><b></b><b></b><b></b><b></b>'
-    '</div>'
-)
-
-
-# ── Step tracker ───────────────────────────────────────────────────────────────
-def _step_html(current_step, is_running, is_done):
-    html = '<div class="step-row">'
-    for i, (label, icon) in enumerate(zip(STEP_LABELS, STEP_ICONS)):
-        n = i + 1
-        if is_done or n < current_step:
-            cls = "done"
-            disp_icon = '<div class="step-icon">✅</div>'
-        elif n == current_step and is_running:
-            cls = "active"
-            disp_icon = _FIN_LOADER          # animated gold bars
-        elif n == current_step and not is_running:
-            cls = "done"
-            disp_icon = '<div class="step-icon">✅</div>'
-        else:
-            cls = "pending"
-            disp_icon = f'<div class="step-icon">{icon}</div>'
-        html += f"""
-        <div class="step-item {cls}">
-          <div class="step-num">Step {n}</div>
-          {disp_icon}
-          <div class="step-lbl">{label}</div>
-        </div>"""
-    html += "</div>"
-    return html
 
 
 
