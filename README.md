@@ -1,6 +1,6 @@
-# MGA Deal Scout 🏦
+# Deal Scout 🔭
 
-> Autonomous weekly deal-sourcing pipeline for early-stage Indian startups — built for **MGA Ventures**, a Mumbai-based family office.
+> Autonomous weekly deal-sourcing pipeline that discovers, researches, and packages promising early-stage Indian startups into a ready-to-present deal memo.
 
 [![Live Demo](https://img.shields.io/badge/Streamlit-Live%20Demo-FF4B4B?logo=streamlit&logoColor=white)](https://deal-screener-uykhmzbcoce9iwmbhscovd.streamlit.app/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
@@ -36,14 +36,14 @@ Select a sector, hit **Run Deal Scout**, and watch the pipeline execute live. Do
 
 | Slide | Content |
 |-------|---------|
-| 1 | **Title** — Company name, sector, date, MGA branding |
+| 1 | **Title** — Company name, sector, date |
 | 2 | **Company Overview** — Stage, HQ, business model, latest news ticker |
 | 3 | **What It Does** — Problem, solution, and market context |
 | 4 | **Products & Services** — Product list with descriptions |
 | 5 | **Management Team** — Founders, roles, backgrounds |
 | 6 | **Market Opportunity** — TAM / SAM / SOM with sources |
 | 7 | **Funding & Traction** — Funding table, timeline, traction metrics |
-| 8 | **Thesis Fit Scorecard** — Scored against MGA's investment criteria |
+| 8 | **Thesis Fit Scorecard** — Scored against the investment criteria |
 | 9 | **Sources & Attribution** — All clickable numbered references |
 
 ---
@@ -197,4 +197,4 @@ deal-screener/
 
 ---
 
-Built for [MGA Ventures](https://mgaventures.in) · Mumbai
+Built with Python · Streamlit · Groq · Serper.dev

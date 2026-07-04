@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deal_scout.py — MGA Ventures Weekly Deal-Sourcing Pipeline
+deal_scout.py — Deal Scout: Autonomous Weekly Deal-Sourcing Pipeline
 ===========================================================
 Runs autonomously every Monday to surface one promising early-stage Indian
 startup, produce a 9-slide PowerPoint deal memo, and email it.
@@ -205,7 +205,7 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
     """Fetch a web page and return cleaned plain text (first max_chars chars)."""
     if any(d in url for d in _FETCH_SKIP):
         return ""
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; MGADealScout/1.0)"}
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; DealScout/1.0)"}
     try:
         r = requests.get(url, headers=headers, timeout=12, allow_redirects=True)
         if r.status_code != 200:
@@ -260,7 +260,7 @@ def _score(title: str, snippet: str, url: str = "", sector: str = "") -> int:
                 "founded in us", "founded in america"]:
         if kw in text:
             score -= 10
-    # Penalise companies beyond Seed–Series B (outside MGA's stage mandate)
+    # Penalise companies beyond Seed–Series B (outside stage mandate)
     for kw in ["series c", "series d", "series e", "series f", "series g",
                "pre-ipo", "ipo-bound", "ipo bound", "growth stage", "late stage",
                "late-stage", "pre ipo"]:
@@ -552,9 +552,8 @@ def deep_research(company: str, sector: str, discovery_url: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _PROMPT = """\
-You are a deal analyst at MGA Ventures, a Mumbai family office investing in \
-early-stage Indian startups (Seed to Series B, Consumer / Fintech / SaaS, \
-ticket up to $2M USD).
+You are a deal analyst researching early-stage Indian startups \
+(Seed to Series B, Consumer / Fintech / SaaS, ticket up to $2M USD).
 
 Below is raw web research on a company called "{company}" in the {sector} \
 sector. Extract ONLY facts explicitly stated in the text.
@@ -623,7 +622,7 @@ exact structure:
   "recent_news": [
     {{"headline": "Latest news headline verbatim or closely paraphrased from source", "date": "Mon YYYY or ''", "source_url": "URL"}}
   ],
-  "email_summary": "Exactly 3 sentences: what the company does, its traction, and why it fits MGA's thesis.",
+  "email_summary": "Exactly 3 sentences: what the company does, its traction, and why it fits the investment thesis.",
   "sources": [
     CRITICAL: This array MUST contain one entry for EVERY number, amount, name, date, and
     statistic you placed anywhere in this JSON. That means:
@@ -1101,7 +1100,7 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
     s1.background.fill.solid()
     s1.background.fill.fore_color.rgb = NAVY
 
-    _txb(s1, "MGA VENTURES",
+    _txb(s1, "DEAL SCOUT",
          0.5, 0.5, 12.33, 0.55, size=14, bold=True,
          color=GOLD, align=PP_ALIGN.CENTER)
     _txb(s1, "DEAL SCREENING MEMO",
@@ -1149,7 +1148,7 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
         _txb(s1, clbl,  cxj+0.12, 5.90, chip1_w-0.2, 0.28, size=9,  bold=True, color=GOLD)
         _txb(s1, cval,  cxj+0.12, 6.22, chip1_w-0.2, 0.40, size=13, bold=True, color=WHITE)
 
-    _txb(s1, f"Prepared: {today_str}   ·   MGA Ventures — Internal Use Only",
+    _txb(s1, f"Deal Scout   ·   Prepared: {today_str}",
          0.5, 6.95, 12.33, 0.38, size=10,
          color=RGBColor(0x70, 0x80, 0x98), align=PP_ALIGN.CENTER)
     # Company logo — top-right corner, white backing
@@ -1615,7 +1614,7 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
     s8.background.fill.solid()
     s8.background.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFB)
     _header_bar(
-        s8, "MGA Thesis Fit Assessment",
+        s8, "Thesis Fit Assessment",
         subtitle="Stage: Seed-Series B   |   Sectors: Consumer / Fintech / SaaS   |   Ticket: up to $2M",
     )
     criteria = [
@@ -1828,7 +1827,7 @@ def email_deck(pptx_path: Path, company: str, summary: str, today_str: str,
     msg             = MIMEMultipart()
     msg["From"]     = GMAIL_USER
     msg["To"]       = recipient
-    msg["Subject"]  = f"MGA Deal Scout — {company} — {today_str}"
+    msg["Subject"]  = f"Deal Scout — {company} — {today_str}"
     msg.attach(MIMEText(summary, "plain"))
 
     with open(pptx_path, "rb") as fh:
@@ -1852,7 +1851,7 @@ def email_deck(pptx_path: Path, company: str, summary: str, today_str: str,
 def main():
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     print(f"\n{'=' * 62}")
-    print(f"  MGA Deal Scout   ·   {today_str}")
+    print(f"  Deal Scout   ·   {today_str}")
     print(f"{'=' * 62}\n")
 
     # Check required env vars before doing anything
@@ -1867,7 +1866,7 @@ def main():
         sys.exit(1)
 
     # Step 0 — sector (CLI override for testing; weekly rotation in production)
-    parser = argparse.ArgumentParser(description="MGA Deal Scout")
+    parser = argparse.ArgumentParser(description="Deal Scout")
     parser.add_argument(
         "--sector",
         choices=SECTORS,

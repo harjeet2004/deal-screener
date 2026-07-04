@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-deal_scout_app.py — MGA Ventures Deal Scout Dashboard
+deal_scout_app.py — Deal Scout Dashboard
 Streamlit UI for the autonomous deal-sourcing pipeline.
 Select a sector, watch live progress, download the PPTX, get it emailed.
 """
@@ -21,7 +21,7 @@ BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
 st.set_page_config(
-    page_title="MGA Deal Scout",
+    page_title="Deal Scout",
     page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -540,7 +540,7 @@ def _run_pipeline(sector: str, send_email: bool, recipient_email: str, log_q: qu
                             if "out of scope" in f]
             if len(out_of_scope) >= 2:
                 log_q.put(("log",
-                    f"[Attempt {attempt}] '{company}' is outside MGA's scope "
+                    f"[Attempt {attempt}] '{company}' is outside scope "
                     "(stage/sector/ticket). Searching for a better match…"))
                 continue
 
@@ -634,8 +634,8 @@ with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center;padding:1.8rem 0.5rem 1.4rem;">
       <div style="font-size:3rem;margin-bottom:0.5rem;filter:drop-shadow(0 0 10px {GOLD}66);">🏦</div>
-      <div style="font-size:1.05rem;font-weight:900;color:{GOLD};letter-spacing:0.08em;">MGA VENTURES</div>
-      <div style="font-size:0.72rem;color:#607080;margin-top:0.2rem;letter-spacing:0.05em;">DEAL SCOUT DASHBOARD</div>
+      <div style="font-size:1.05rem;font-weight:900;color:{GOLD};letter-spacing:0.08em;">DEAL SCOUT</div>
+      <div style="font-size:0.72rem;color:#607080;margin-top:0.2rem;letter-spacing:0.05em;">AUTONOMOUS STARTUP DISCOVERY</div>
     </div>
     <hr>
     """, unsafe_allow_html=True)
@@ -873,7 +873,7 @@ st.markdown(f"""
   <div style="font-size:2.5rem;filter:drop-shadow(0 0 8px {GOLD}88);">🏦</div>
   <div>
     <div style="font-size:0.65rem;font-weight:800;color:{GOLD}aa;letter-spacing:0.18em;
-                text-transform:uppercase;">MGA Ventures · Internal Tool</div>
+                text-transform:uppercase;">Deal Scout · Startup Intelligence</div>
     <div style="font-size:1.7rem;font-weight:900;color:white;line-height:1.15;">
       Deal Scout Dashboard
     </div>
@@ -1025,7 +1025,7 @@ if st.session_state.result:
                 return "UNKNOWN"
             return "FIT ✓"
 
-        st.markdown(f'<div class="sec-label" style="color:{NAVY}">MGA Thesis Fit</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sec-label" style="color:{NAVY}">Thesis Fit</div>', unsafe_allow_html=True)
         thtml = '<div class="thesis-grid">'
         for lbl, text in criteria:
             col_hex = _fit_color(text)
