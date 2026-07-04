@@ -14,12 +14,12 @@ Run:  python deal_scout.py
 """
 
 import argparse
-import base64
 import datetime
 import io
 import json
 import os
 import re
+import smtplib
 import sys
 import time
 from email import encoders
@@ -34,10 +34,6 @@ import matplotlib.pyplot as plt
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from google.auth.transport.requests import Request as GoogleRequest
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 from groq import Groq
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -47,15 +43,13 @@ from pptx.util import Inches, Pt
 # ── Environment ───────────────────────────────────────────────────────────────
 load_dotenv()
 
-BASE_DIR        = Path(__file__).parent
-CREDS_PATH      = BASE_DIR / "credentials.json"
-TOKEN_PATH      = BASE_DIR / "token.json"
+BASE_DIR          = Path(__file__).parent
 
-SERPER_API_KEY  = os.getenv("SERPER_API_KEY", "")
-GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
-RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL", "")
-
-GMAIL_SCOPES    = ["https://www.googleapis.com/auth/gmail.send"]
+SERPER_API_KEY    = os.getenv("SERPER_API_KEY", "")
+GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
+RECIPIENT_EMAIL   = os.getenv("RECIPIENT_EMAIL", "")
+GMAIL_USER        = os.getenv("GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
 
 # ── Design palette ────────────────────────────────────────────────────────────
 NAVY  = RGBColor(0x1A, 0x2B, 0x4A)
@@ -1828,43 +1822,26 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
 # 7. Gmail send
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _gmail_service():
-    """
-    Authenticate with Gmail API using OAuth2.
-    On first run: opens a browser window for one-time consent.
-    On subsequent runs: uses the saved token.json silently.
-    """
-    creds = None
-    if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), GMAIL_SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(GoogleRequest())
-        else:
-            if not CREDS_PATH.exists():
-                raise RuntimeError(
-                    f"{CREDS_PATH.name} not found. "
-                    "Gmail OAuth requires credentials.json from the Google Cloud Console. "
-                    "On Streamlit Cloud, set the GMAIL_TOKEN_JSON secret instead."
-                )
-            flow  = InstalledAppFlow.from_client_secrets_file(str(CREDS_PATH), GMAIL_SCOPES)
-            creds = flow.run_local_server(port=0)
-        TOKEN_PATH.write_text(creds.to_json())
-    return build("gmail", "v1", credentials=creds)
-
-
 def email_deck(pptx_path: Path, company: str, summary: str, today_str: str):
-    """Send the PowerPoint as a Gmail attachment."""
-    if not RECIPIENT_EMAIL:
-        print("[WARN] RECIPIENT_EMAIL not set in .env — skipping email.")
+    """Send the PPTX via Gmail SMTP using an App Password (no OAuth required)."""
+    recipient = RECIPIENT_EMAIL or GMAIL_USER
+    if not recipient:
+        print("[WARN] RECIPIENT_EMAIL not set — skipping email.")
         return
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        raise RuntimeError(
+            "Gmail not configured. "
+            "Set GMAIL_USER (your Gmail address) and GMAIL_APP_PASSWORD "
+            "(a 16-character App Password from myaccount.google.com → Security → "
+            "App passwords) in your .env or Streamlit Cloud secrets."
+        )
 
-    print(f"[Gmail] Sending to {RECIPIENT_EMAIL} …")
-    svc = _gmail_service()
+    print(f"[Gmail] Sending to {recipient} …")
 
     msg             = MIMEMultipart()
-    msg["to"]       = RECIPIENT_EMAIL
-    msg["subject"]  = f"MGA Deal Scout — {company} — {today_str}"
+    msg["From"]     = GMAIL_USER
+    msg["To"]       = recipient
+    msg["Subject"]  = f"MGA Deal Scout — {company} — {today_str}"
     msg.attach(MIMEText(summary, "plain"))
 
     with open(pptx_path, "rb") as fh:
@@ -1875,9 +1852,10 @@ def email_deck(pptx_path: Path, company: str, summary: str, today_str: str):
                     f'attachment; filename="{pptx_path.name}"')
     msg.attach(part)
 
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    svc.users().messages().send(userId="me", body={"raw": raw}).execute()
-    print(f"[Gmail] Sent.")
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, recipient, msg.as_string())
+    print(f"[Gmail] Sent to {recipient}.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

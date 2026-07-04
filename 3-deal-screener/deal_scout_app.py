@@ -60,8 +60,12 @@ try:
         if "RECIPIENT_EMAIL" in st.secrets:
             _ds.RECIPIENT_EMAIL = st.secrets["RECIPIENT_EMAIL"]
             os.environ["RECIPIENT_EMAIL"] = st.secrets["RECIPIENT_EMAIL"]
-        if "GMAIL_TOKEN_JSON" in st.secrets:
-            (BASE_DIR / "token.json").write_text(st.secrets["GMAIL_TOKEN_JSON"])
+        if "GMAIL_USER" in st.secrets:
+            _ds.GMAIL_USER = st.secrets["GMAIL_USER"]
+            os.environ["GMAIL_USER"] = st.secrets["GMAIL_USER"]
+        if "GMAIL_APP_PASSWORD" in st.secrets:
+            _ds.GMAIL_APP_PASSWORD = st.secrets["GMAIL_APP_PASSWORD"]
+            os.environ["GMAIL_APP_PASSWORD"] = st.secrets["GMAIL_APP_PASSWORD"]
 except Exception:
     pass  # Running locally — .env + load_dotenv() inside deal_scout handles it
 
