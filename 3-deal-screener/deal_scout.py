@@ -701,6 +701,30 @@ def _txb(slide, text, left, top, width, height,
     return txb
 
 
+_LINK_BLUE = RGBColor(0x1A, 0x6B, 0xC4)
+
+
+def _txb_link(slide, text, href, left, top, width, height,
+              size=9, bold=False):
+    """Add a textbox whose text renders as a clickable hyperlink (blue, underlined)."""
+    txb = slide.shapes.add_textbox(
+        Inches(left), Inches(top), Inches(width), Inches(height)
+    )
+    tf = txb.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.LEFT
+    run = p.add_run()
+    run.text = str(text)
+    run.font.size = Pt(size)
+    run.font.bold = bold
+    run.font.underline = True
+    run.font.color.rgb = _LINK_BLUE
+    if href:
+        run.hyperlink.address = href
+    return txb
+
+
 def _header_bar(slide, title: str, subtitle: str = ""):
     """Navy header bar across the top of a content slide."""
     bar_h = 1.1 if subtitle else 0.95
@@ -1722,15 +1746,17 @@ def build_deck(d: dict, today_str: str, logo_bytes: bytes = b"") -> Path:
             ab.line.fill.background()
 
             header_line = f"{outlet}  {date}".strip()
-            _txb(s9, f"{i+1}.  {header_line}",
-                 sx+0.15, sy+0.05, col_w-0.2, 0.26, size=11, bold=True, color=NAVY)
+            # Number + outlet clickable — links to the source
+            _txb_link(s9, f"{i+1}.  {header_line}", url,
+                      sx+0.15, sy+0.05, col_w-0.2, 0.26, size=11, bold=True)
             if claim:
                 claim_short = (claim[:90] + "…") if len(claim) > 90 else claim
                 _txb(s9, f'"{claim_short}"',
                      sx+0.15, sy+0.32, col_w-0.2, 0.30, size=10, italic=True, color=DARK)
+            # URL also clickable — same target, full URL as display text
             url_display = (url[:70] + "…") if len(url) > 70 else url
-            _txb(s9, url_display, sx+0.15, sy+0.63, col_w-0.2, 0.22,
-                 size=9, color=GRAY)
+            _txb_link(s9, url_display, url,
+                      sx+0.15, sy+0.63, col_w-0.2, 0.22, size=9)
 
     # ── Save (add _v2/_v3 if today's file is already open) ───────────────────
     safe = re.sub(r"[^\w\-]", "_", company)
