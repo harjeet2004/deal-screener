@@ -1,0 +1,18 @@
+# Credentials and secrets — NEVER commit these
+.env
+credentials.json
+token.json
+
+# Generated output files
+*.pptx
+*.pdf
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
