@@ -162,17 +162,68 @@ st.markdown(f"""
 }}
 .step-item.active {{
   border-color: {GOLD};
-  background: #fffaf0;
-  box-shadow: 0 3px 16px {GOLD}44;
-  animation: pulse-border 1.5s infinite;
+  background: linear-gradient(160deg, #fffdf5 0%, #fff8e8 100%);
+  box-shadow: 0 0 0 2px {GOLD}55, 0 4px 24px {GOLD}44;
+  animation: glow-sweep 2s ease-in-out infinite;
 }}
 .step-item.pending {{
-  opacity: 0.45;
+  opacity: 0.38;
 }}
-@keyframes pulse-border {{
-  0%,100% {{ box-shadow: 0 3px 16px {GOLD}44; }}
-  50%      {{ box-shadow: 0 3px 28px {GOLD}88; }}
+@keyframes glow-sweep {{
+  0%,100% {{ box-shadow: 0 0 0 2px {GOLD}44, 0 4px 20px {GOLD}33; }}
+  50%      {{ box-shadow: 0 0 0 2px {GOLD}99, 0 6px 32px {GOLD}66; }}
 }}
+
+/* ── Finance bar-chart loader ─────────────────────────────────── */
+@keyframes fin-bar {{
+  0%,100% {{ height: 5px;  opacity: 0.45; }}
+  50%      {{ height: 22px; opacity: 1.0;  }}
+}}
+.fin-loader {{
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 26px;
+  justify-content: center;
+  margin: 2px auto 2px;
+}}
+.fin-loader b {{
+  display: inline-block;
+  width: 5px;
+  background: linear-gradient(180deg, {GOLD} 0%, #a87820 100%);
+  border-radius: 2px 2px 1px 1px;
+  animation: fin-bar 1.0s ease-in-out infinite;
+}}
+.fin-loader b:nth-child(1) {{ animation-delay: 0s;    }}
+.fin-loader b:nth-child(2) {{ animation-delay: 0.18s; }}
+.fin-loader b:nth-child(3) {{ animation-delay: 0.36s; }}
+.fin-loader b:nth-child(4) {{ animation-delay: 0.54s; }}
+.fin-loader b:nth-child(5) {{ animation-delay: 0.72s; }}
+
+/* ── Pulse dot for status badge ───────────────────────────────── */
+@keyframes pulse-dot {{
+  0%,100% {{ transform: scale(1);   opacity: 1;   }}
+  50%      {{ transform: scale(0.6); opacity: 0.4; }}
+}}
+.pulse-dot {{
+  width: 8px; height: 8px;
+  background: {GOLD};
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}}
+
+/* ── Scan dots ("Analysing...") ───────────────────────────────── */
+@keyframes scan-flicker {{
+  0%,20%   {{ opacity: 0; }}
+  50%       {{ opacity: 1; }}
+  80%,100% {{ opacity: 0; }}
+}}
+.sdot {{ display: inline-block; animation: scan-flicker 1.5s infinite; }}
+.sdot:nth-child(2) {{ animation-delay: 0.3s; }}
+.sdot:nth-child(3) {{ animation-delay: 0.6s; }}
+
 .step-num  {{ font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; color: #99aabb; text-transform: uppercase; margin-bottom: 0.25rem; }}
 .step-icon {{ font-size: 1.5rem; line-height: 1; margin-bottom: 0.25rem; }}
 .step-lbl  {{ font-size: 0.72rem; font-weight: 700; color: #334; }}
@@ -680,6 +731,13 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+_FIN_LOADER = (
+    '<div class="fin-loader">'
+    '<b></b><b></b><b></b><b></b><b></b>'
+    '</div>'
+)
+
+
 # ── Step tracker ───────────────────────────────────────────────────────────────
 def _step_html(current_step, is_running, is_done):
     html = '<div class="step-row">'
@@ -687,20 +745,20 @@ def _step_html(current_step, is_running, is_done):
         n = i + 1
         if is_done or n < current_step:
             cls = "done"
-            disp_icon = "✅"
+            disp_icon = '<div class="step-icon">✅</div>'
         elif n == current_step and is_running:
             cls = "active"
-            disp_icon = "⏳"
+            disp_icon = _FIN_LOADER          # animated gold bars
         elif n == current_step and not is_running:
             cls = "done"
-            disp_icon = "✅"
+            disp_icon = '<div class="step-icon">✅</div>'
         else:
             cls = "pending"
-            disp_icon = icon
+            disp_icon = f'<div class="step-icon">{icon}</div>'
         html += f"""
         <div class="step-item {cls}">
           <div class="step-num">Step {n}</div>
-          <div class="step-icon">{disp_icon}</div>
+          {disp_icon}
           <div class="step-lbl">{label}</div>
         </div>"""
     html += "</div>"
@@ -714,15 +772,21 @@ cur    = st.session_state.step
 
 if active or done or error or cur > 0:
     # Status badge
+    _sdots = '<span class="sdot">.</span><span class="sdot">.</span><span class="sdot">.</span>'
     if active:
-        cname = st.session_state.candidate
-        badge_text = f"Running — {cname}" if cname else f"Running — {st.session_state.sector_used}"
-        st.markdown(f'<div class="status-running">⏳ {badge_text}</div>', unsafe_allow_html=True)
+        cname  = st.session_state.candidate
+        action = f"Analysing <strong>{cname}</strong>" if cname else f"Scanning {st.session_state.sector_used}"
+        st.markdown(
+            f'<div class="status-running">'
+            f'<span class="pulse-dot"></span>&nbsp; {action}{_sdots}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     elif done:
         company_name = st.session_state.result.get("company_name", "")
-        st.markdown(f'<div class="status-done">✅ Complete — {company_name}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-done">✅ &nbsp;Deal memo ready — <strong>{company_name}</strong></div>', unsafe_allow_html=True)
     elif error:
-        st.markdown(f'<div class="status-running" style="border-color:{RED};color:{RED};background:{RED}22;">❌ Error</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-running" style="border-color:{RED};color:{RED};background:{RED}22;">❌ &nbsp;Pipeline stopped — see details below</div>', unsafe_allow_html=True)
 
     st.markdown(_step_html(cur, active, done), unsafe_allow_html=True)
 
