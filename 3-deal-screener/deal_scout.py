@@ -827,9 +827,14 @@ def _funding_chart(rounds: list) -> bytes:
     labels, values = [], []
     for r in rounds:
         amt = r.get("amount", "")
-        m = re.search(r"[\d.]+", amt.replace(",", ""))
-        if m:
+        # Require at least one digit before an optional decimal — avoids matching bare "."
+        m = re.search(r"\d+\.?\d*", amt.replace(",", ""))
+        if not m:
+            continue
+        try:
             val = float(m.group())
+        except ValueError:
+            continue
             # Rough normalisation to Cr: $1M ~ 85 Cr
             if "$" in amt and any(x in amt.upper() for x in ["M", "MN", "MILLION"]):
                 val *= 85

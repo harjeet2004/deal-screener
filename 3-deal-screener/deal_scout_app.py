@@ -647,8 +647,13 @@ if run_btn and not st.session_state.running:
         daemon=True,
     ).start()
 
-# Drain queue on every render while running
+# Drain queue on every render while running.
+# If the pipeline just finished (running flipped to False), rerun immediately so
+# the sidebar button re-renders with "Run Deal Scout" instead of staying stuck.
+_was_running = st.session_state.running
 _drain()
+if _was_running and not st.session_state.running:
+    st.rerun()
 
 
 # ── Header ─────────────────────────────────────────────────────────────────────
