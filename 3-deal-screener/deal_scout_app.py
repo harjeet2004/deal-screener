@@ -74,7 +74,7 @@ RED   = "#BB2222"
 AMBER = "#CC7A00"
 LTBG  = "#F4F6FA"
 
-ALL_SECTORS = ["Consumer", "Finance", "Fintech"]
+ALL_SECTORS = ["Consumer", "Fintech", "SaaS"]
 
 STEP_LABELS = [
     "Discover",
@@ -448,6 +448,19 @@ def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
                 and "not publicly" not in hq.lower():
             log_q.put(("error",
                 f"HQ detected as '{hq}' — not an Indian city. "
+                "Re-run to pick a different candidate."))
+            return
+
+        # Thesis-fit guard — skip companies clearly outside MGA's scope
+        fit_stage  = structured.get("thesis_fit_stage",  "").lower()
+        fit_sector = structured.get("thesis_fit_sector", "").lower()
+        fit_ticket = structured.get("thesis_fit_ticket", "").lower()
+        out_of_scope = [f for f in [fit_stage, fit_sector, fit_ticket]
+                        if "out of scope" in f]
+        if len(out_of_scope) >= 2:
+            log_q.put(("error",
+                f"'{company}' appears outside MGA's investment scope "
+                "(wrong stage, sector, or ticket size). "
                 "Re-run to pick a different candidate."))
             return
 

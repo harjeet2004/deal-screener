@@ -218,6 +218,13 @@ def _score(title: str, snippet: str, url: str = "") -> int:
                 "founded in us", "founded in america"]:
         if kw in text:
             score -= 10
+    # Penalise companies beyond Seed–Series B (outside MGA's stage mandate)
+    for kw in ["series c", "series d", "series e", "series f", "series g",
+               "pre-ipo", "ipo-bound", "ipo bound", "growth stage", "late stage",
+               "late-stage", "pre ipo"]:
+        if kw in text:
+            score -= 12
+
     # Heavily penalise list/directory/aggregator pages — not actual startups
     for kw in ["unicorn", "ipo", "nyse", "bse", "nse", "nasdaq", "listed",
                 "billion-dollar", "accelerator program", "vc fund", "venture capital firm",
