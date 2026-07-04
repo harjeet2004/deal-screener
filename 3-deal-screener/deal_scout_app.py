@@ -428,21 +428,25 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+MAX_PIPELINE_ATTEMPTS = 6
+
 # ── Session state ──────────────────────────────────────────────────────────────
 def _init(k, v):
     if k not in st.session_state:
         st.session_state[k] = v
 
-_init("running",      False)
-_init("result",       None)
-_init("pptx_path",    None)
-_init("log_lines",    [])
-_init("email_sent",   False)
-_init("email_error",  None)
-_init("error",        None)
-_init("step",         0)
-_init("sector_used",  "")
-_init("candidate",    "")
+_init("running",        False)
+_init("result",         None)
+_init("pptx_path",      None)
+_init("log_lines",      [])
+_init("email_sent",     False)
+_init("email_error",    None)
+_init("error",          None)
+_init("step",           0)
+_init("sector_used",    "")
+_init("candidate",      "")
+_init("attempt_cur",    1)
+_init("attempt_max",    MAX_PIPELINE_ATTEMPTS)
 
 
 # ── Stdout tee for live log capture ───────────────────────────────────────────
@@ -472,9 +476,6 @@ _INDIA_CITIES = {
     "ahmedabad", "jaipur", "indore", "surat", "kochi", "coimbatore",
 }
 
-MAX_PIPELINE_ATTEMPTS = 6
-
-
 def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
     orig = sys.stdout
     sys.stdout = _TeeIO(orig, log_q)
@@ -485,6 +486,7 @@ def _run_pipeline(sector: str, send_email: bool, log_q: queue.Queue):
         pptx_path  = None
 
         for attempt in range(1, MAX_PIPELINE_ATTEMPTS + 1):
+            log_q.put(("attempt", (attempt, MAX_PIPELINE_ATTEMPTS)))
             if attempt > 1:
                 log_q.put(("log",
                     f"[Attempt {attempt}/{MAX_PIPELINE_ATTEMPTS}] "
@@ -591,6 +593,8 @@ def _drain():
                 st.session_state.log_lines.append(payload)
             elif kind == "step":
                 st.session_state.step = payload
+            elif kind == "attempt":
+                st.session_state.attempt_cur, st.session_state.attempt_max = payload
             elif kind == "candidate":
                 st.session_state.candidate = payload
             elif kind == "done":
@@ -688,6 +692,8 @@ if run_btn and not st.session_state.running:
     st.session_state.step        = 1
     st.session_state.sector_used = sector_final
     st.session_state.candidate   = ""
+    st.session_state.attempt_cur = 1
+    st.session_state.attempt_max = MAX_PIPELINE_ATTEMPTS
 
     lq = queue.Queue()
     st.session_state["_log_q"] = lq
@@ -753,9 +759,16 @@ def _status_panel():
             cname  = st.session_state.candidate
             action = (f"Analysing <strong>{cname}</strong>"
                       if cname else f"Scanning {st.session_state.sector_used}")
+            cur_a  = st.session_state.attempt_cur
+            max_a  = st.session_state.attempt_max
+            retry_tag = (
+                f"&nbsp;<span style='font-size:0.7rem;opacity:0.7;font-weight:600;'>"
+                f"[Attempt {cur_a}/{max_a}]</span>"
+                if cur_a > 1 else ""
+            )
             st.markdown(
                 f'<div class="status-running">'
-                f'<span class="pulse-dot"></span>&nbsp; {action}{_sdots}'
+                f'<span class="pulse-dot"></span>&nbsp; {action}{_sdots}{retry_tag}'
                 f'</div>',
                 unsafe_allow_html=True,
             )

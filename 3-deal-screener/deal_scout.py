@@ -97,6 +97,23 @@ _SECTOR_KEYWORDS: dict[str, list[str]] = {
                  "software", "api", "developer tools", "vertical saas"],
 }
 
+# Broader fallback queries used when primary queries yield no scored candidates.
+# Intentionally simpler and wider — trading precision for recall.
+_SECTOR_FALLBACK_QUERIES: dict[str, list[str]] = {
+    "consumer": [
+        'India consumer startup raises funding 2025 seed "Series A" crore',
+        'India D2C brand startup funding 2025 investors backed',
+    ],
+    "fintech": [
+        'India fintech startup raises funding 2025 seed "Series A" crore',
+        'India payments startup OR lending startup funding 2025 investors',
+    ],
+    "saas": [
+        'India SaaS startup raises funding 2025 seed "Series A" crore',
+        'India software startup OR cloud startup funding 2025 investors backed',
+    ],
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 0. Sector rotation
 # ─────────────────────────────────────────────────────────────────────────────
@@ -418,37 +435,46 @@ def discover_startup(sector: str, exclude: set | None = None) -> dict:
     )
 
     sector_key = sector.lower()
-    # Fall back to generic terms if sector is not in the map
     q_terms = _SECTOR_QUERIES.get(sector_key, [f'"{sector.lower()} startup"', ""])
-    queries = [
+    primary_queries = [
         f'{news_sites} India {q_terms[0]} startup raises crore 2025 -report -roundup -list',
         f'{news_sites} India {sector.lower()} {q_terms[1]} "seed" OR "Series A" OR "Series B" 2025 -report -list',
     ]
+    fallback_queries = _SECTOR_FALLBACK_QUERIES.get(sector_key, [
+        f'India {sector.lower()} startup raises seed funding 2025',
+    ])
 
-    all_results = []
-    for q in queries:
-        results = serper_search(q, num=8)
-        all_results.extend(results)
-        time.sleep(0.6)
+    def _run_queries(qs: list[str]) -> list:
+        results = []
+        for q in qs:
+            results.extend(serper_search(q, num=8))
+            time.sleep(0.6)
+        return results
 
-    if not all_results:
-        print("[ERROR] No results from Serper. Check your API key.")
-        sys.exit(1)
+    def _score_results(raw: list) -> list:
+        seen, out = set(), []
+        for r in raw:
+            url    = r["link"]
+            domain = re.sub(r"https?://(?:www\.)?", "", url).split("/")[0]
+            if url in seen or domain in _JUNK_DOMAINS:
+                continue
+            seen.add(url)
+            s = _score(r["title"], r["snippet"], url, sector=sector)
+            if s > 0:
+                out.append((s, r))
+        return out
 
-    # Deduplicate by URL path (not just domain — same site can cover many startups)
-    seen_urls, scored = set(), []
-    for r in all_results:
-        url = r["link"]
-        domain = re.sub(r"https?://(?:www\.)?", "", url).split("/")[0]
-        if url in seen_urls or domain in _JUNK_DOMAINS:
-            continue
-        seen_urls.add(url)
-        s = _score(r["title"], r["snippet"], url, sector=sector)
-        if s > 0:
-            scored.append((s, r))
+    # Try primary queries first; fall back to broader queries if nothing scored
+    all_results = _run_queries(primary_queries)
+    scored = _score_results(all_results)
 
     if not scored:
-        print("[ERROR] No suitable startup candidate found in search results.")
+        print("[Discovery] Primary queries yielded no candidates — trying fallback queries…")
+        fallback_results = _run_queries(fallback_queries)
+        scored = _score_results(fallback_results)
+
+    if not scored:
+        print("[ERROR] No suitable startup candidate found even with fallback queries.")
         sys.exit(1)
 
     scored.sort(key=lambda x: x[0], reverse=True)
