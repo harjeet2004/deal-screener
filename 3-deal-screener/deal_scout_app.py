@@ -28,22 +28,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Inject Streamlit Cloud secrets into env BEFORE importing deal_scout ────────
-# On Streamlit Cloud, API keys live in st.secrets; locally they come from .env.
-# Setting them in os.environ here means deal_scout.py picks them up at import.
+# ── Import pipeline first, then inject secrets directly into the module ────────
+# deal_scout.py reads SERPER_API_KEY / GROQ_API_KEY as module-level globals at
+# import time.  On Streamlit Cloud there is no .env, so we must patch those
+# globals after import.  We also set os.environ as a belt-and-suspenders backup.
 try:
-    for _k in ("SERPER_API_KEY", "GROQ_API_KEY", "RECIPIENT_EMAIL"):
-        if _k in st.secrets and not os.environ.get(_k):
-            os.environ[_k] = st.secrets[_k]
-    # Gmail token stored as JSON string in secrets (optional — enables email on cloud)
-    if "GMAIL_TOKEN_JSON" in st.secrets:
-        _token_path = BASE_DIR / "token.json"
-        _token_path.write_text(st.secrets["GMAIL_TOKEN_JSON"])
-except Exception:
-    pass  # st.secrets not available locally — .env handles it
-
-# ── Import pipeline ────────────────────────────────────────────────────────────
-try:
+    import deal_scout as _ds
     from deal_scout import (
         _fetch_logo,
         build_deck,
@@ -56,6 +46,25 @@ try:
 except ImportError as _e:
     IMPORT_OK = False
     IMPORT_ERR = str(_e)
+    _ds = None
+
+# Patch module globals with Streamlit Cloud secrets (runs every script execution,
+# which is fine — Streamlit caches the module object between reruns).
+try:
+    if _ds is not None:
+        if "SERPER_API_KEY" in st.secrets:
+            _ds.SERPER_API_KEY = st.secrets["SERPER_API_KEY"]
+            os.environ["SERPER_API_KEY"] = st.secrets["SERPER_API_KEY"]
+        if "GROQ_API_KEY" in st.secrets:
+            _ds.GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+            os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+        if "RECIPIENT_EMAIL" in st.secrets:
+            _ds.RECIPIENT_EMAIL = st.secrets["RECIPIENT_EMAIL"]
+            os.environ["RECIPIENT_EMAIL"] = st.secrets["RECIPIENT_EMAIL"]
+        if "GMAIL_TOKEN_JSON" in st.secrets:
+            (BASE_DIR / "token.json").write_text(st.secrets["GMAIL_TOKEN_JSON"])
+except Exception:
+    pass  # Running locally — .env + load_dotenv() inside deal_scout handles it
 
 # ── Palette ────────────────────────────────────────────────────────────────────
 NAVY  = "#1A2B4A"
